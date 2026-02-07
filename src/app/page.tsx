@@ -5,6 +5,8 @@ import Sidebar from '@/components/Sidebar'
 import ContentForm from '@/components/ContentForm'
 import ResultsPanel from '@/components/ResultsPanel'
 import LoadingPanel from '@/components/LoadingPanel'
+import CoinDisplay from '@/components/CoinDisplay'
+import JarvisCore from '@/components/JarvisCore'
 
 export interface ContentPost {
   day: number
@@ -23,27 +25,76 @@ export interface FormData {
   channel: string
   duration: string
   frequency: string
+  customFrequency: string
   niche: string
   suggestion: string
   product: string
+  businessName: string
+  targetAudience: string
+  website: string
+  socialProfile: string
+  uploadedFiles: File[]
 }
+
+const COST_PER_GENERATION = 10
 
 export default function Home() {
   const [results, setResults] = useState<ContentPost[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [activeSection, setActiveSection] = useState<'form' | 'results'>('form')
+  const [coins, setCoins] = useState(100)
+
+  const handlePurchaseCoins = (amount: number) => {
+    setCoins(prev => prev + amount)
+  }
 
   const handleGenerate = async (formData: FormData) => {
+    if (coins < COST_PER_GENERATION) {
+      setError(`Coins insuficientes. Você precisa de ${COST_PER_GENERATION} coins para gerar conteúdo. Compre mais coins clicando no botão de coins.`)
+      return
+    }
+
     setLoading(true)
     setError('')
     setResults([])
 
     try {
+      const payload: Record<string, unknown> = {
+        channel: formData.channel,
+        duration: formData.duration,
+        frequency: formData.frequency === 'custom' ? formData.customFrequency : formData.frequency,
+        niche: formData.niche,
+        suggestion: formData.suggestion,
+        product: formData.product,
+        businessName: formData.businessName,
+        targetAudience: formData.targetAudience,
+        website: formData.website,
+        socialProfile: formData.socialProfile,
+        files: [] as { name: string; type: string; data: string }[],
+      }
+
+      if (formData.uploadedFiles.length > 0) {
+        const filePromises = formData.uploadedFiles.map(async (file) => {
+          return new Promise<{ name: string; type: string; data: string }>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              resolve({
+                name: file.name,
+                type: file.type,
+                data: reader.result as string,
+              })
+            }
+            reader.readAsDataURL(file)
+          })
+        })
+        payload.files = await Promise.all(filePromises)
+      }
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -53,6 +104,7 @@ export default function Home() {
 
       const data = await response.json()
       setResults(data.posts)
+      setCoins(prev => prev - COST_PER_GENERATION)
       setActiveSection('results')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro inesperado'
@@ -63,31 +115,42 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-cave-900">
+    <div className="flex h-screen overflow-hidden bg-jarvis-900">
+      <JarvisCore />
+
       <Sidebar activeSection={activeSection} onNavigate={setActiveSection} hasResults={results.length > 0} />
 
-      <main className="flex-1 overflow-y-auto">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-cave-400/30 bg-cave-900/80 px-8 py-4 backdrop-blur-md">
+      <main className="relative flex-1 overflow-y-auto">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-jarvis-400/30 bg-jarvis-900/80 px-8 py-4 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-white">
-              {activeSection === 'form' ? 'Gerador de Conteúdo' : 'Conteúdo Gerado'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+              <h1 className="animate-glow-text text-xl font-bold tracking-wider text-cyan-400">
+                J.A.R.V.I.S
+              </h1>
+            </div>
+            <span className="text-sm text-gray-600">|</span>
+            <span className="text-sm text-gray-400">
+              {activeSection === 'form' ? 'Content Intelligence System' : 'Conteúdo Gerado'}
+            </span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="rounded-full bg-cave-600 px-4 py-1.5 text-sm text-gray-300">
-              🇧🇷 Português
+            <CoinDisplay coins={coins} onPurchase={handlePurchaseCoins} />
+            <span className="rounded-full border border-jarvis-400/30 bg-jarvis-700 px-4 py-1.5 text-sm text-gray-400">
+              🇧🇷 PT-BR
             </span>
           </div>
         </header>
 
-        <div className="p-8">
+        <div className="relative z-[1] p-8">
           {activeSection === 'form' && (
             <>
-              <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
-                <p className="font-semibold text-amber-400">✦ Conteúdo Profissional com IA</p>
-                <p className="mt-1 text-sm text-amber-400/80">
-                  Preencha os campos abaixo com informações sobre seu negócio. Nossa IA vai pesquisar tendências,
-                  criar copies persuasivas e entregar um calendário completo de conteúdo pronto para publicar.
+              <div className="mb-6 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4">
+                <p className="font-semibold text-cyan-400">✦ Jarvis Content Intelligence</p>
+                <p className="mt-1 text-sm text-cyan-400/60">
+                  Preencha os campos abaixo ou use o comando de voz. Jarvis vai analisar seu negócio,
+                  pesquisar tendências, e criar um calendário completo com copies persuasivas, CTAs estratégicos
+                  e briefings visuais prontos para seu designer.
                 </p>
               </div>
 
@@ -103,12 +166,22 @@ export default function Home() {
                 </div>
                 <div className="lg:col-span-2">
                   {loading ? <LoadingPanel /> : (
-                    <div className="rounded-xl border border-cave-400/30 bg-cave-800 p-6">
+                    <div className="rounded-xl border border-jarvis-400/30 bg-jarvis-800/80 p-6 backdrop-blur-sm">
                       <h3 className="mb-4 text-lg font-semibold text-white">Preview</h3>
-                      <div className="flex h-64 items-center justify-center text-cave-300">
-                        <p className="text-center text-sm text-gray-500">
-                          Preencha o formulário e clique em gerar para ver o preview do seu conteúdo aqui.
-                        </p>
+                      <div className="flex h-64 items-center justify-center">
+                        <div className="text-center">
+                          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-500/20 bg-cyan-500/5">
+                            <svg className="h-8 w-8 text-cyan-500/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Preencha o formulário e acione o Jarvis para ver o preview do seu conteúdo aqui.
+                          </p>
+                          <p className="mt-2 text-xs text-gray-700">
+                            Custo: {COST_PER_GENERATION} coins por geração
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { Flame, PenTool, FileText, Clock, Settings } from 'lucide-react'
+import { Flame, PenTool, FileText, LayoutGrid, Settings, Zap } from 'lucide-react'
 
 interface SidebarProps {
   activeSection: 'form' | 'results'
@@ -10,20 +10,20 @@ interface SidebarProps {
 
 export default function Sidebar({ activeSection, onNavigate, hasResults }: SidebarProps) {
   return (
-    <aside className="flex w-72 flex-col border-r border-cave-400/30 bg-cave-800">
+    <aside className="flex w-72 flex-col border-r border-jarvis-400/30 bg-jarvis-800">
       {/* Logo */}
-      <div className="flex items-center gap-3 border-b border-cave-400/30 px-6 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500">
-          <Flame className="h-5 w-5 text-cave-900" />
+      <div className="flex items-center gap-3 border-b border-jarvis-400/30 px-6 py-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/20 border border-cyan-500/30">
+          <Zap className="h-5 w-5 text-cyan-400" />
         </div>
         <span className="text-xl font-bold tracking-tight text-white">
-          CONTENT <span className="text-amber-500">CAVE</span>
+          CONTENT <span className="text-cyan-400">CAVE</span>
         </span>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6">
-        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-600">
           Dashboard
         </p>
 
@@ -43,7 +43,7 @@ export default function Sidebar({ activeSection, onNavigate, hasResults }: Sideb
           />
         </ul>
 
-        <p className="mb-3 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <p className="mb-3 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-600">
           Ferramentas
         </p>
 
@@ -55,8 +55,8 @@ export default function Sidebar({ activeSection, onNavigate, hasResults }: Sideb
             highlight
           />
           <SidebarItem
-            icon={<Clock className="h-4 w-4" />}
-            label="Calendário Editorial"
+            icon={<LayoutGrid className="h-4 w-4" />}
+            label="Gerador de Carrosséis"
             active={false}
             disabled
             comingSoon
@@ -72,8 +72,12 @@ export default function Sidebar({ activeSection, onNavigate, hasResults }: Sideb
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-cave-400/30 px-6 py-4">
-        <p className="text-xs text-gray-500">Powered by Claude AI</p>
+      <div className="border-t border-jarvis-400/30 px-6 py-4">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+          <p className="text-xs text-gray-500">Jarvis Online</p>
+        </div>
+        <p className="mt-1 text-[10px] text-gray-700">Powered by Claude AI</p>
       </div>
     </aside>
   )
@@ -105,12 +109,12 @@ function SidebarItem({
         disabled={disabled}
         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
           active
-            ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
             : highlight
-            ? 'text-amber-400/70 hover:bg-cave-600 hover:text-amber-400 border border-transparent'
+            ? 'text-cyan-400/70 hover:bg-jarvis-600 hover:text-cyan-400 border border-transparent'
             : disabled
-            ? 'text-gray-600 cursor-not-allowed border border-transparent'
-            : 'text-gray-400 hover:bg-cave-600 hover:text-white border border-transparent'
+            ? 'text-gray-700 cursor-not-allowed border border-transparent'
+            : 'text-gray-400 hover:bg-jarvis-600 hover:text-white border border-transparent'
         }`}
       >
         {icon}
@@ -121,7 +125,7 @@ function SidebarItem({
           </span>
         )}
         {comingSoon && (
-          <span className="rounded bg-cave-500 px-2 py-0.5 text-[10px] text-gray-500">
+          <span className="rounded bg-jarvis-500 px-2 py-0.5 text-[10px] text-gray-600">
             Em breve
           </span>
         )}

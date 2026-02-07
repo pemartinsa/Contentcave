@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 
 const STEPS = [
   'Analisando seu nicho de mercado...',
+  'Lendo arquivos e catálogos enviados...',
   'Pesquisando tendências do momento...',
+  'Analisando seu site e redes sociais...',
   'Criando estratégia de conteúdo...',
   'Escrevendo copies persuasivas...',
   'Definindo briefing visual para cada post...',
@@ -23,8 +25,11 @@ export default function LoadingPanel() {
   }, [])
 
   return (
-    <div className="rounded-xl border border-cave-400/30 bg-cave-800 p-6">
-      <h3 className="mb-4 text-lg font-semibold text-white">Gerando Conteúdo...</h3>
+    <div className="rounded-xl border border-jarvis-400/30 bg-jarvis-800 p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+        <h3 className="text-lg font-semibold text-white">Jarvis processando...</h3>
+      </div>
 
       <div className="space-y-3">
         {STEPS.map((step, i) => (
@@ -37,10 +42,10 @@ export default function LoadingPanel() {
             <div
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
                 i < currentStep
-                  ? 'bg-green-500/20 text-green-400'
+                  ? 'bg-cyan-500/20 text-cyan-400'
                   : i === currentStep
-                  ? 'bg-amber-500/20 text-amber-400 animate-pulse'
-                  : 'bg-cave-600 text-gray-500'
+                  ? 'bg-cyan-500/20 text-cyan-400 animate-pulse'
+                  : 'bg-jarvis-600 text-gray-500'
               }`}
             >
               {i < currentStep ? '✓' : i === currentStep ? '●' : '○'}
@@ -48,10 +53,10 @@ export default function LoadingPanel() {
             <span
               className={`text-sm ${
                 i < currentStep
-                  ? 'text-green-400'
+                  ? 'text-cyan-400/70'
                   : i === currentStep
-                  ? 'text-amber-400'
-                  : 'text-gray-500'
+                  ? 'text-cyan-400'
+                  : 'text-gray-600'
               }`}
             >
               {step}
@@ -61,13 +66,13 @@ export default function LoadingPanel() {
       </div>
 
       <div className="mt-6">
-        <div className="h-1.5 overflow-hidden rounded-full bg-cave-600">
+        <div className="h-1.5 overflow-hidden rounded-full bg-jarvis-600">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-1000"
+            className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-1000"
             style={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
           />
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-gray-600">
           Isso pode levar de 30s a 2 min dependendo da quantidade de conteúdo...
         </p>
       </div>
