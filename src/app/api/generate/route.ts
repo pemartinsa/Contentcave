@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+const COST_PER_GENERATION = 10
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -147,6 +152,23 @@ SOMENTE JSON. Varie formatos. Hashtags mix alta/baixa competição. Briefing vis
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Não autorizado. Faça login.' }, { status: 401 })
+    }
+
+    const userId = (session.user as unknown as { id: string }).id
+
+    // Server-side coin check
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user || user.coins < COST_PER_GENERATION) {
+      return NextResponse.json(
+        { error: `Coins insuficientes. Você precisa de ${COST_PER_GENERATION} coins. Acesse Cobranças e Pagamento para adquirir mais.` },
+        { status: 403 }
+      )
+    }
+
     const body = await request.json()
     const {
       channel, duration, frequency, niche, suggestion, product,
@@ -283,7 +305,13 @@ export async function POST(request: NextRequest) {
       throw new Error('Nenhum post foi gerado')
     }
 
-    return NextResponse.json({ posts: allPosts })
+    // Deduct coins server-side after successful generation
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { coins: { decrement: COST_PER_GENERATION } },
+    })
+
+    return NextResponse.json({ posts: allPosts, coins: updatedUser.coins })
   } catch (err: unknown) {
     console.error('Generation error:', err)
     let message = 'Erro interno'

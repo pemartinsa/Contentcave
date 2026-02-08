@@ -51,6 +51,16 @@ export async function POST(req: Request) {
           where: { userId },
           data: { stripeCustomerId: customerId },
         })
+      } else {
+        // Create subscription record if it doesn't exist
+        await prisma.subscription.create({
+          data: {
+            userId,
+            plan: 'free',
+            status: 'active',
+            stripeCustomerId: customerId,
+          },
+        })
       }
     }
 

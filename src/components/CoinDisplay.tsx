@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Coins, Plus, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Coins, Plus, X, CreditCard } from 'lucide-react'
 
 const COIN_PACKAGES = [
   { coins: 50, price: 'R$ 19,90', popular: false },
@@ -14,8 +15,9 @@ interface CoinDisplayProps {
   onPurchase: (amount: number) => void
 }
 
-export default function CoinDisplay({ coins, onPurchase }: CoinDisplayProps) {
+export default function CoinDisplay({ coins }: CoinDisplayProps) {
   const [showModal, setShowModal] = useState(false)
+  const router = useRouter()
 
   return (
     <>
@@ -65,16 +67,12 @@ export default function CoinDisplay({ coins, onPurchase }: CoinDisplayProps) {
 
             <div className="space-y-3">
               {COIN_PACKAGES.map((pkg) => (
-                <button
+                <div
                   key={pkg.coins}
-                  onClick={() => {
-                    onPurchase(pkg.coins)
-                    setShowModal(false)
-                  }}
-                  className={`relative flex w-full items-center justify-between rounded-xl border p-4 transition-all ${
+                  className={`relative flex w-full items-center justify-between rounded-xl border p-4 ${
                     pkg.popular
-                      ? 'border-cyan-500/50 bg-cyan-500/5 hover:bg-cyan-500/10'
-                      : 'border-jarvis-400 bg-jarvis-700 hover:border-jarvis-300'
+                      ? 'border-cyan-500/50 bg-cyan-500/5'
+                      : 'border-jarvis-400 bg-jarvis-700'
                   }`}
                 >
                   {pkg.popular && (
@@ -98,12 +96,23 @@ export default function CoinDisplay({ coins, onPurchase }: CoinDisplayProps) {
                   <span className={`text-sm font-bold ${pkg.popular ? 'text-cyan-400' : 'text-gray-300'}`}>
                     {pkg.price}
                   </span>
-                </button>
+                </div>
               ))}
             </div>
 
-            <p className="mt-4 text-center text-[10px] text-gray-600">
-              Coins são inclusos no plano mensal. Compras adicionais ficam disponíveis imediatamente.
+            <button
+              onClick={() => {
+                setShowModal(false)
+                router.push('/billing')
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-3 text-sm font-bold text-jarvis-900 transition-all hover:bg-cyan-400"
+            >
+              <CreditCard className="h-4 w-4" />
+              Ver Planos e Assinar
+            </button>
+
+            <p className="mt-3 text-center text-[10px] text-gray-600">
+              Coins são inclusos no plano mensal. Assine um plano para receber coins todo mês.
             </p>
           </div>
         </div>

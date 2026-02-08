@@ -65,5 +65,5 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'contentcave-jarvis-secret-key-change-in-production',
+  secret: process.env.NEXTAUTH_SECRET,
 }

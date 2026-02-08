@@ -23,13 +23,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
   }
 
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error('STRIPE_WEBHOOK_SECRET not configured')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
+
   let event: Stripe.Event
 
   try {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ''
+      process.env.STRIPE_WEBHOOK_SECRET
     )
   } catch {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
@@ -43,27 +48,30 @@ export async function POST(req: Request) {
 
       if (userId && planId) {
         const coins = PLAN_COINS[planId] || 100
+        const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.toString() || null
+        const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.toString() || null
 
         await prisma.subscription.upsert({
           where: { userId },
           update: {
             plan: planId,
             status: 'active',
-            stripeSubId: session.subscription as string,
-            stripeCustomerId: session.customer as string,
+            stripeSubId: subscriptionId,
+            stripeCustomerId: customerId,
           },
           create: {
             userId,
             plan: planId,
             status: 'active',
-            stripeSubId: session.subscription as string,
-            stripeCustomerId: session.customer as string,
+            stripeSubId: subscriptionId,
+            stripeCustomerId: customerId,
           },
         })
 
+        // Increment coins instead of overwriting
         await prisma.user.update({
           where: { id: userId },
-          data: { coins },
+          data: { coins: { increment: coins } },
         })
       }
       break
@@ -71,7 +79,7 @@ export async function POST(req: Request) {
 
     case 'invoice.paid': {
       const invoice = event.data.object as Stripe.Invoice
-      const subId = (invoice as unknown as { subscription: string }).subscription
+      const subId = (invoice as unknown as { subscription: string | null }).subscription
 
       if (subId) {
         const sub = await prisma.subscription.findFirst({
@@ -80,9 +88,10 @@ export async function POST(req: Request) {
 
         if (sub) {
           const coins = PLAN_COINS[sub.plan] || 100
+          // Increment coins on renewal instead of overwriting
           await prisma.user.update({
             where: { id: sub.userId },
-            data: { coins },
+            data: { coins: { increment: coins } },
           })
           await prisma.subscription.update({
             where: { id: sub.id },

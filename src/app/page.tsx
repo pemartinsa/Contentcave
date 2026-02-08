@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import Sidebar from '@/components/Sidebar'
 import ContentForm from '@/components/ContentForm'
 import ResultsPanel from '@/components/ResultsPanel'
@@ -69,11 +70,22 @@ function compressImage(file: File): Promise<{ name: string; type: string; data: 
 }
 
 export default function Home() {
+  const { data: session } = useSession()
   const [results, setResults] = useState<ContentPost[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [activeSection, setActiveSection] = useState<'form' | 'results'>('form')
   const [coins, setCoins] = useState(100)
+
+  // Sync coins from session
+  useEffect(() => {
+    if (session?.user) {
+      const userCoins = (session.user as unknown as { coins?: number }).coins
+      if (typeof userCoins === 'number') {
+        setCoins(userCoins)
+      }
+    }
+  }, [session])
 
   const handlePurchaseCoins = (amount: number) => {
     setCoins(prev => prev + amount)
@@ -142,7 +154,10 @@ export default function Home() {
 
       const data = await response.json()
       setResults(data.posts)
-      setCoins(prev => prev - COST_PER_GENERATION)
+      // Use server-returned coin balance (authoritative)
+      if (typeof data.coins === 'number') {
+        setCoins(data.coins)
+      }
       setActiveSection('results')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro inesperado'
