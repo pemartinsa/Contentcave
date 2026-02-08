@@ -1,6 +1,8 @@
 'use client'
 
-import { Flame, PenTool, FileText, LayoutGrid, Settings, Zap } from 'lucide-react'
+import { Flame, PenTool, FileText, LayoutGrid, Settings, Zap, CreditCard, LogOut } from 'lucide-react'
+import { signOut, useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
 interface SidebarProps {
   activeSection: 'form' | 'results'
@@ -9,6 +11,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeSection, onNavigate, hasResults }: SidebarProps) {
+  const { data: session } = useSession()
+  const router = useRouter()
+
   return (
     <aside className="flex w-72 flex-col border-r border-jarvis-400/30 bg-jarvis-800">
       {/* Logo */}
@@ -61,6 +66,19 @@ export default function Sidebar({ activeSection, onNavigate, hasResults }: Sideb
             disabled
             comingSoon
           />
+        </ul>
+
+        <p className="mb-3 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-600">
+          Conta
+        </p>
+
+        <ul className="space-y-1">
+          <SidebarItem
+            icon={<CreditCard className="h-4 w-4" />}
+            label="Cobranças e Pagamento"
+            active={false}
+            onClick={() => router.push('/billing')}
+          />
           <SidebarItem
             icon={<Settings className="h-4 w-4" />}
             label="Configurações"
@@ -73,6 +91,25 @@ export default function Sidebar({ activeSection, onNavigate, hasResults }: Sideb
 
       {/* Footer */}
       <div className="border-t border-jarvis-400/30 px-6 py-4">
+        {session?.user && (
+          <div className="mb-3 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-gray-300">
+                {session.user.name || session.user.email}
+              </p>
+              {session.user.name && (
+                <p className="truncate text-xs text-gray-600">{session.user.email}</p>
+              )}
+            </div>
+            <button
+              onClick={() => signOut({ callbackUrl: '/auth' })}
+              className="ml-2 rounded-lg p-2 text-gray-600 transition-all hover:bg-jarvis-600 hover:text-red-400"
+              title="Sair"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
           <p className="text-xs text-gray-500">Jarvis Online</p>
