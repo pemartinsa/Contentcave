@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
+export const runtime = 'nodejs'
+export const maxDuration = 120
+
 const CHANNEL_NAMES: Record<string, string> = {
   instagram: 'Instagram',
   facebook: 'Facebook',
@@ -80,13 +83,21 @@ export async function POST(request: NextRequest) {
     // Build content blocks for multimodal message
     const contentBlocks: Anthropic.Messages.ContentBlockParam[] = []
 
-    // Process uploaded files - images sent as vision, PDFs described
+    // Process uploaded files - images sent as vision, PDFs as document
+    // Limit: max 3 files, max 4MB per file base64
+    const MAX_FILE_BASE64 = 4 * 1024 * 1024 // ~4MB base64 ≈ 3MB file
+    const MAX_FILES = 3
     const fileDescriptions: string[] = []
     if (files && Array.isArray(files)) {
-      for (const file of files as FileData[]) {
+      const filesToProcess = (files as FileData[]).slice(0, MAX_FILES)
+      for (const file of filesToProcess) {
+        const base64Data = file.data.split(',')[1]
+        if (!base64Data || base64Data.length > MAX_FILE_BASE64) {
+          fileDescriptions.push(`[${file.name}] - Arquivo ignorado (muito grande, máx ~3MB)`)
+          continue
+        }
+
         if (file.type.startsWith('image/')) {
-          // Send image for vision analysis
-          const base64Data = file.data.split(',')[1]
           const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
           contentBlocks.push({
             type: 'image',
@@ -98,11 +109,9 @@ export async function POST(request: NextRequest) {
           })
           contentBlocks.push({
             type: 'text',
-            text: `[IMAGEM DO PRODUTO: ${file.name}] Analise esta imagem detalhadamente - identifique o produto, características visuais, embalagem, cores, público-alvo aparente, e qualquer texto visível.`,
+            text: `[IMAGEM: ${file.name}] Analise: produto, características, embalagem, cores, público-alvo, texto visível.`,
           })
         } else if (file.type === 'application/pdf') {
-          // For PDFs, extract base64 and send as document
-          const base64Data = file.data.split(',')[1]
           contentBlocks.push({
             type: 'document',
             source: {
@@ -113,7 +122,7 @@ export async function POST(request: NextRequest) {
           })
           contentBlocks.push({
             type: 'text',
-            text: `[CATÁLOGO PDF: ${file.name}] Analise este documento por completo - identifique todos os produtos, benefícios, ingredientes/nutrientes, preços, e informações relevantes para criar conteúdo.`,
+            text: `[PDF: ${file.name}] Analise: produtos, benefícios, ingredientes, preços, informações para conteúdo.`,
           })
         }
       }
@@ -247,7 +256,20 @@ REGRAS CRÍTICAS:
     return NextResponse.json({ posts: parsed.posts })
   } catch (err: unknown) {
     console.error('Generation error:', err)
-    const message = err instanceof Error ? err.message : 'Erro interno'
+    let message = 'Erro interno'
+    if (err instanceof Anthropic.APIError) {
+      if (err.status === 413) {
+        message = 'Requisição muito grande. Tente remover arquivos anexados ou reduzir o tamanho das imagens/PDFs.'
+      } else if (err.status === 429) {
+        message = 'Limite de requisições atingido. Aguarde alguns segundos e tente novamente.'
+      } else if (err.status === 401) {
+        message = 'Chave da API inválida. Verifique sua ANTHROPIC_API_KEY.'
+      } else {
+        message = err.message || 'Erro na API de IA'
+      }
+    } else if (err instanceof Error) {
+      message = err.message
+    }
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

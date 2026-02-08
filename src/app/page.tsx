@@ -38,6 +38,36 @@ export interface FormData {
 
 const COST_PER_GENERATION = 10
 
+function compressImage(file: File): Promise<{ name: string; type: string; data: string }> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      const MAX_SIZE = 800
+      let w = img.width
+      let h = img.height
+      if (w > MAX_SIZE || h > MAX_SIZE) {
+        if (w > h) {
+          h = Math.round((h * MAX_SIZE) / w)
+          w = MAX_SIZE
+        } else {
+          w = Math.round((w * MAX_SIZE) / h)
+          h = MAX_SIZE
+        }
+      }
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, w, h)
+      const data = canvas.toDataURL('image/jpeg', 0.7)
+      resolve({ name: file.name, type: 'image/jpeg', data })
+    }
+    img.src = url
+  })
+}
+
 export default function Home() {
   const [results, setResults] = useState<ContentPost[]>([])
   const [loading, setLoading] = useState(false)
@@ -76,6 +106,14 @@ export default function Home() {
 
       if (formData.uploadedFiles.length > 0) {
         const filePromises = formData.uploadedFiles.map(async (file) => {
+          // Compress images to max 800px and reduce quality
+          if (file.type.startsWith('image/')) {
+            return compressImage(file)
+          }
+          // PDFs: limit to 5MB
+          if (file.size > 5 * 1024 * 1024) {
+            throw new Error(`Arquivo ${file.name} muito grande (máx 5MB para PDFs)`)
+          }
           return new Promise<{ name: string; type: string; data: string }>((resolve) => {
             const reader = new FileReader()
             reader.onload = () => {
