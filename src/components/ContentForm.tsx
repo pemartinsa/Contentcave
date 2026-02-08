@@ -1,9 +1,13 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Send, Sparkles, Upload, FileText, Image, X, Globe, AtSign } from 'lucide-react'
+import { Send, Sparkles, Upload, FileText, Image, X, Globe, AtSign, AlertTriangle } from 'lucide-react'
 import VoiceButton from './VoiceButton'
 import type { FormData } from '@/app/page'
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_PDF_SIZE = 10 * 1024 * 1024   // 10MB
+const MAX_FILES = 3
 
 const CHANNELS = [
   { value: 'instagram', label: 'Instagram', emoji: '📸' },
@@ -49,6 +53,7 @@ export default function ContentForm({ onSubmit, loading }: ContentFormProps) {
     socialProfile: '',
     uploadedFiles: [],
   })
+  const [fileError, setFileError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -62,31 +67,68 @@ export default function ContentForm({ onSubmit, loading }: ContentFormProps) {
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError('')
     const files = Array.from(e.target.files || [])
-    const validFiles = files.filter(f =>
-      f.type === 'application/pdf' ||
-      f.type === 'image/jpeg' ||
-      f.type === 'image/jpg' ||
-      f.type === 'image/png'
-    )
-    if (validFiles.length > 0) {
-      update('uploadedFiles', [...formData.uploadedFiles, ...validFiles])
+
+    // Check total file count
+    if (formData.uploadedFiles.length + files.length > MAX_FILES) {
+      setFileError(`Máximo ${MAX_FILES} arquivos permitidos.`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
     }
+
+    const rejected: string[] = []
+    const accepted: File[] = []
+
+    for (const f of files) {
+      // Check type
+      const isImage = f.type === 'image/jpeg' || f.type === 'image/jpg' || f.type === 'image/png'
+      const isPdf = f.type === 'application/pdf'
+
+      if (!isImage && !isPdf) {
+        rejected.push(`${f.name}: formato não suportado`)
+        continue
+      }
+
+      // Check size
+      if (isImage && f.size > MAX_IMAGE_SIZE) {
+        rejected.push(`${f.name}: imagem muito grande (máx 5MB)`)
+        continue
+      }
+      if (isPdf && f.size > MAX_PDF_SIZE) {
+        rejected.push(`${f.name}: PDF muito grande (máx 10MB)`)
+        continue
+      }
+
+      accepted.push(f)
+    }
+
+    if (rejected.length > 0) {
+      setFileError(rejected.join('. '))
+    }
+
+    if (accepted.length > 0) {
+      update('uploadedFiles', [...formData.uploadedFiles, ...accepted])
+    }
+
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const removeFile = (index: number) => {
     const newFiles = formData.uploadedFiles.filter((_: File, i: number) => i !== index)
     update('uploadedFiles', newFiles)
+    setFileError('')
   }
 
   const handleVoiceTranscript = (text: string) => {
     update('suggestion', formData.suggestion ? formData.suggestion + ' ' + text : text)
   }
 
+  // Product text OR file is required (not both mandatory)
+  const hasProduct = formData.product.trim() || formData.uploadedFiles.length > 0
   const isValid = formData.channel && formData.duration &&
     (formData.frequency === 'custom' ? formData.customFrequency : formData.frequency) &&
-    formData.niche && formData.product
+    formData.niche && hasProduct
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -226,11 +268,17 @@ export default function ContentForm({ onSubmit, loading }: ContentFormProps) {
           </label>
           <input
             type="text"
-            placeholder="Ex: Curso online de inglês, Consultoria de marketing, Roupas femininas..."
+            placeholder="Descreva ou anexe um arquivo abaixo (catálogo, foto do produto...)"
             value={formData.product}
             onChange={(e) => update('product', e.target.value)}
             className="w-full rounded-lg border border-jarvis-400/50 bg-jarvis-700 px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50"
           />
+          {!formData.product.trim() && formData.uploadedFiles.length === 0 && (
+            <p className="mt-1 text-xs text-gray-600">Preencha o campo acima ou anexe um arquivo abaixo</p>
+          )}
+          {!formData.product.trim() && formData.uploadedFiles.length > 0 && (
+            <p className="mt-1 text-xs text-cyan-600">Jarvis vai analisar seus arquivos para entender seus produtos</p>
+          )}
 
           {/* File Upload Button */}
           <div className="mt-3">
@@ -245,15 +293,31 @@ export default function ContentForm({ onSubmit, loading }: ContentFormProps) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 rounded-lg border border-dashed border-jarvis-400/50 bg-jarvis-700/50 px-4 py-3 text-sm text-gray-400 transition-all hover:border-cyan-500/30 hover:text-cyan-400"
+              disabled={formData.uploadedFiles.length >= MAX_FILES}
+              className={`flex w-full items-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm transition-all ${
+                formData.uploadedFiles.length >= MAX_FILES
+                  ? 'border-jarvis-500 bg-jarvis-800 text-gray-600 cursor-not-allowed'
+                  : 'border-jarvis-400/50 bg-jarvis-700/50 text-gray-400 hover:border-cyan-500/30 hover:text-cyan-400'
+              }`}
             >
               <Upload className="h-4 w-4" />
-              Anexar imagem do produto ou catálogo PDF
+              {formData.uploadedFiles.length >= MAX_FILES
+                ? `Limite de ${MAX_FILES} arquivos atingido`
+                : 'Anexar imagem do produto ou catálogo PDF'
+              }
             </button>
             <p className="mt-1 text-xs text-gray-600">
-              Aceita: JPEG, PNG, PDF. O Jarvis analisa suas imagens e catálogos para entender seus produtos.
+              Imagens: JPEG, PNG (máx 5MB) | PDF: máx 10MB | Limite: {MAX_FILES} arquivos
             </p>
           </div>
+
+          {/* File Error */}
+          {fileError && (
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
+              <p className="text-xs text-red-400">{fileError}</p>
+            </div>
+          )}
 
           {/* Uploaded Files */}
           {formData.uploadedFiles.length > 0 && (
@@ -271,7 +335,7 @@ export default function ContentForm({ onSubmit, loading }: ContentFormProps) {
                     )}
                     <span className="text-xs text-gray-300 truncate max-w-[200px]">{file.name}</span>
                     <span className="text-[10px] text-gray-600">
-                      ({(file.size / 1024).toFixed(0)}KB)
+                      ({(file.size / (1024 * 1024)).toFixed(1)}MB)
                     </span>
                   </div>
                   <button

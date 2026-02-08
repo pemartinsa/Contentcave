@@ -110,9 +110,9 @@ export default function Home() {
           if (file.type.startsWith('image/')) {
             return compressImage(file)
           }
-          // PDFs: limit to 5MB
-          if (file.size > 5 * 1024 * 1024) {
-            throw new Error(`Arquivo ${file.name} muito grande (máx 5MB para PDFs)`)
+          // PDFs: limit to 10MB
+          if (file.size > 10 * 1024 * 1024) {
+            throw new Error(`Arquivo ${file.name} muito grande (máx 10MB para PDFs)`)
           }
           return new Promise<{ name: string; type: string; data: string }>((resolve) => {
             const reader = new FileReader()

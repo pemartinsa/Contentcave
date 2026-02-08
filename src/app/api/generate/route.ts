@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300
 
 const CHANNEL_NAMES: Record<string, string> = {
   instagram: 'Instagram',
@@ -28,8 +28,7 @@ function calculateTotalPosts(duration: string, frequency: string): number {
     case '2_per_day': return days * 2
     case '3_per_week': return Math.ceil(days / 7) * 3
     default: {
-      // Try to parse custom frequencies
-      const match = frequency.match(/(\d+)/);
+      const match = frequency.match(/(\d+)/)
       if (match) {
         const num = parseInt(match[1])
         if (frequency.toLowerCase().includes('dia') || frequency.toLowerCase().includes('day')) {
@@ -39,7 +38,7 @@ function calculateTotalPosts(duration: string, frequency: string): number {
           return Math.ceil(days / 7) * num
         }
       }
-      return Math.ceil(days / 7) * 3 // fallback
+      return Math.ceil(days / 7) * 3
     }
   }
 }
@@ -47,7 +46,103 @@ function calculateTotalPosts(duration: string, frequency: string): number {
 interface FileData {
   name: string
   type: string
-  data: string // base64 data URL
+  data: string
+}
+
+interface PostResult {
+  day: number
+  date: string
+  theme: string
+  title: string
+  copy: string
+  visualBriefing: string
+  products: string
+  cta: string
+  format: string
+  hashtags: string[]
+}
+
+const BATCH_SIZE = 10
+
+function buildPrompt(params: {
+  channelName: string
+  duration: string
+  frequencyLabel: string
+  niche: string
+  product: string
+  contextExtra: string
+  suggestion: string
+  website: string
+  socialProfile: string
+  targetAudience: string
+  batchStart: number
+  batchCount: number
+  totalPosts: number
+}) {
+  const {
+    channelName, duration, frequencyLabel, niche, product, contextExtra,
+    suggestion, website, socialProfile, targetAudience,
+    batchStart, batchCount, totalPosts,
+  } = params
+
+  const isContinuation = batchStart > 1
+  const batchNote = totalPosts > BATCH_SIZE
+    ? `\n\nIMPORTANTE: Este é o lote ${Math.ceil(batchStart / BATCH_SIZE)} de ${Math.ceil(totalPosts / BATCH_SIZE)}. Gere os posts do DIA ${batchStart} ao DIA ${batchStart + batchCount - 1}. ${isContinuation ? 'Continue a narrativa e estratégia dos posts anteriores, variando temas e formatos.' : ''}`
+    : ''
+
+  return `Você é o JARVIS — sistema avançado de inteligência de conteúdo para redes sociais. Estrategista de marketing digital, copywriter elite, especialista em psicologia do consumidor.
+
+## CONTEXTO DO CLIENTE
+- **Rede social:** ${channelName}
+- **Período:** ${duration} dias
+- **Frequência:** ${frequencyLabel}
+- **Nicho:** ${niche}
+- **Produto/Serviço:** ${product}${contextExtra}
+${suggestion ? `- **Direcionamento:** ${suggestion}` : ''}
+${website ? `- **Website:** ${website}` : ''}
+${socialProfile ? `- **Perfil social:** ${socialProfile}` : ''}
+${targetAudience ? '' : `\nDefina o público ideal para o nicho "${niche}" e produto "${product}".`}
+
+## DIRETRIZES
+- **30%** Educativo → Autoridade
+- **25%** Prova Social/Storytelling
+- **20%** Entretenimento/Tendências
+- **15%** Venda Direta → CTA forte
+- **10%** Conexão/Humanização
+
+### COPIES
+- Hook poderoso na 1ª linha (PARE O SCROLL)
+- Storytelling, linguagem conversacional
+- Emojis estratégicos, quebras de linha
+- CTA claro e específico
+- Tom nativo do ${channelName}
+- Mínimo 150 palavras por copy
+
+### BRIEFING VISUAL
+- Tipo (foto, carrossel, reels), paleta de cores, elementos, texto na arte, estilo, composição
+
+## FORMATO JSON
+Retorne APENAS JSON válido, sem markdown:
+{
+  "posts": [
+    {
+      "day": ${batchStart},
+      "date": "Dia ${batchStart} - Segunda-feira",
+      "theme": "Educativo | Prova Social | Entretenimento | Venda | Conexão",
+      "title": "Título magnético",
+      "copy": "Copy COMPLETA pronta para publicar, mín 150 palavras, com emojis e \\n",
+      "visualBriefing": "Descrição detalhada para designer: tipo, cores, elementos, texto, formato (1080x1080 etc)",
+      "products": "Produtos relacionados",
+      "cta": "CTA específico e acionável",
+      "format": "Carrossel | Post Único | Reels | Stories | Vídeo",
+      "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
+    }
+  ]
+}
+
+Crie exatamente ${batchCount} posts (dia ${batchStart} ao ${batchStart + batchCount - 1}).${batchNote}
+
+SOMENTE JSON. Varie formatos. Hashtags mix alta/baixa competição. Briefing visual executável sem perguntas.`
 }
 
 export async function POST(request: NextRequest) {
@@ -59,9 +154,18 @@ export async function POST(request: NextRequest) {
       files,
     } = body
 
-    if (!channel || !duration || !frequency || !niche || !product) {
+    if (!channel || !duration || !frequency || !niche) {
       return NextResponse.json(
         { error: 'Todos os campos obrigatórios devem ser preenchidos.' },
+        { status: 400 }
+      )
+    }
+
+    // Product text or files required
+    const hasProduct = (product && product.trim()) || (files && files.length > 0)
+    if (!hasProduct) {
+      return NextResponse.json(
+        { error: 'Informe o que você vende ou anexe um arquivo.' },
         { status: 400 }
       )
     }
@@ -78,182 +182,108 @@ export async function POST(request: NextRequest) {
     const totalPosts = calculateTotalPosts(duration, frequency)
     const channelName = CHANNEL_NAMES[channel] || channel
     const frequencyLabel = FREQUENCY_LABELS[frequency] || frequency
-    const postsToGenerate = Math.min(totalPosts, 30)
+    const postsToGenerate = Math.min(totalPosts, 60)
 
-    // Build content blocks for multimodal message
-    const contentBlocks: Anthropic.Messages.ContentBlockParam[] = []
-
-    // Process uploaded files - images sent as vision, PDFs as document
-    // Limit: max 3 files, max 4MB per file base64
-    const MAX_FILE_BASE64 = 4 * 1024 * 1024 // ~4MB base64 ≈ 3MB file
+    // Build file content blocks (only for first batch)
+    const fileBlocks: Anthropic.Messages.ContentBlockParam[] = []
+    const MAX_FILE_BASE64 = 8 * 1024 * 1024 // 8MB base64
     const MAX_FILES = 3
-    const fileDescriptions: string[] = []
+
     if (files && Array.isArray(files)) {
       const filesToProcess = (files as FileData[]).slice(0, MAX_FILES)
       for (const file of filesToProcess) {
         const base64Data = file.data.split(',')[1]
-        if (!base64Data || base64Data.length > MAX_FILE_BASE64) {
-          fileDescriptions.push(`[${file.name}] - Arquivo ignorado (muito grande, máx ~3MB)`)
-          continue
-        }
+        if (!base64Data || base64Data.length > MAX_FILE_BASE64) continue
 
         if (file.type.startsWith('image/')) {
           const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-          contentBlocks.push({
+          fileBlocks.push({
             type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: base64Data,
-            },
+            source: { type: 'base64', media_type: mediaType, data: base64Data },
           })
-          contentBlocks.push({
+          fileBlocks.push({
             type: 'text',
             text: `[IMAGEM: ${file.name}] Analise: produto, características, embalagem, cores, público-alvo, texto visível.`,
           })
         } else if (file.type === 'application/pdf') {
-          contentBlocks.push({
+          fileBlocks.push({
             type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64Data,
-            },
+            source: { type: 'base64', media_type: 'application/pdf', data: base64Data },
           })
-          contentBlocks.push({
+          fileBlocks.push({
             type: 'text',
-            text: `[PDF: ${file.name}] Analise: produtos, benefícios, ingredientes, preços, informações para conteúdo.`,
+            text: `[PDF: ${file.name}] Analise: todos os produtos, benefícios, ingredientes, preços.`,
           })
         }
       }
     }
 
-    // Build context sections
+    // Build context
     let contextExtra = ''
     if (businessName) contextExtra += `\n- **Nome do negócio:** ${businessName}`
-    if (targetAudience) contextExtra += `\n- **Público-alvo definido:** ${targetAudience}`
-    if (website) contextExtra += `\n- **Website:** ${website} (considere a presença online do negócio)`
-    if (socialProfile) contextExtra += `\n- **Perfil social:** ${socialProfile} (considere o conteúdo já publicado)`
+    if (targetAudience) contextExtra += `\n- **Público-alvo:** ${targetAudience}`
 
-    const mainPrompt = `Você é o JARVIS — o mais avançado sistema de inteligência de conteúdo para redes sociais. Você é um estrategista de marketing digital de nível mundial, copywriter elite, e especialista em psicologia do consumidor.
-
-## SUA MISSÃO
-Criar um calendário editorial EXCEPCIONAL que vai transformar o perfil do cliente em uma máquina de engajamento e vendas.
-
-## CONTEXTO DO CLIENTE
-- **Rede social principal:** ${channelName}
-- **Período:** ${duration} dias
-- **Frequência:** ${frequencyLabel}
-- **Nicho:** ${niche}
-- **Produto/Serviço:** ${product}${contextExtra}
-${suggestion ? `- **Direcionamento do cliente:** ${suggestion}` : ''}
-${fileDescriptions.length > 0 ? `\n## ANÁLISE DE ARQUIVOS\n${fileDescriptions.join('\n')}` : ''}
-${website ? `\n## ANÁLISE DO WEBSITE\nO cliente possui o site ${website}. Considere que ele já tem uma presença digital e use isso para criar conteúdo alinhado com sua comunicação atual.` : ''}
-${socialProfile ? `\n## DIAGNÓSTICO DE REDE SOCIAL\nO cliente tem o perfil ${socialProfile}. Faça um diagnóstico rápido do que ele provavelmente já publica e sugira melhorias através do conteúdo que você vai criar. O novo conteúdo deve elevar o nível do que ele já faz.` : ''}
-${targetAudience ? '' : `\n## DEFINIÇÃO DE PÚBLICO\nComo o cliente não definiu público-alvo, analise o nicho "${niche}" e o produto "${product}" para definir o público ideal. Considere demographics, psychographics, dores, desejos e comportamento de compra.`}
-
-## DIRETRIZES ESTRATÉGICAS
-
-### 1. FRAMEWORK DE CONTEÚDO
-Distribua os posts seguindo esta estrutura ao longo do período:
-- **30% Educativo/Valor** → Posiciona como autoridade. Ensine algo útil.
-- **25% Prova Social/Storytelling** → Depoimentos, bastidores, cases de sucesso
-- **20% Entretenimento/Tendências** → Memes do nicho, trends adaptadas, conteúdo viral
-- **15% Venda Direta** → CTA forte, oferta, escassez, urgência
-- **10% Conexão/Humanização** → Bastidores, dia a dia, vulnerabilidade estratégica
-
-### 2. GATILHOS MENTAIS (use em TODAS as copies)
-- Urgência e Escassez (ofertas limitadas, vagas acabando)
-- Prova Social (números, depoimentos, resultados)
-- Autoridade (dados, pesquisas, experiência)
-- Reciprocidade (entregue valor genuíno antes de pedir algo)
-- Antecipação (crie expectativa para o próximo conteúdo)
-- Identificação (fale a língua do público, use suas dores e desejos)
-
-### 3. COPIES QUE CONVERTEM
-- Hook poderoso na primeira linha (PARE O SCROLL)
-- Storytelling quando possível
-- Linguagem conversacional, como se falasse com um amigo
-- Emojis estratégicos (não exagere, mas use para quebrar texto)
-- Quebras de linha para facilitar leitura
-- CTA claro e específico no final
-- Adapte o tom para ${channelName}
-
-### 4. BRIEFING VISUAL PROFISSIONAL
-Para cada post, descreva EXATAMENTE:
-- Tipo de imagem/vídeo (foto, ilustração, carrossel, reels)
-- Paleta de cores sugerida
-- Elementos visuais obrigatórios
-- Texto que deve aparecer na arte (se houver)
-- Referência de estilo (clean, bold, minimalista, etc)
-- Composição e layout
-
-### 5. CTAs ESTRATÉGICOS
-Cada CTA deve ser:
-- Específico (não genérico como "saiba mais")
-- Alinhado com o objetivo do post
-- Fácil de executar (1 passo)
-- Criar senso de movimento/progressão
-
-## FORMATO DE RESPOSTA
-Retorne APENAS um JSON válido, sem markdown, sem texto extra:
-
-{
-  "posts": [
-    {
-      "day": 1,
-      "date": "Dia 1 - Segunda-feira",
-      "theme": "Educativo | Prova Social | Entretenimento | Venda | Conexão",
-      "title": "Título magnético que prende atenção",
-      "copy": "A copy COMPLETA do post, pronta para copiar e colar na rede social. Mínimo 150 palavras. Inclua emojis, quebras de linha (\\n), hashtags no final se aplicável, e todo o texto da legenda. Deve ser PUBLICÁVEL imediatamente.",
-      "visualBriefing": "Descrição ultra-detalhada para o designer: tipo de arte, cores exatas, elementos, texto na imagem, estilo, composição, formato (1080x1080, 1080x1350, 9:16 para reels), referências visuais.",
-      "products": "Produto(s) ou serviço(s) relacionados ao post",
-      "cta": "Call to Action específico, poderoso e acionável",
-      "format": "Carrossel | Post Único | Reels | Stories | Vídeo Longo",
-      "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5"]
-    }
-  ]
-}
-
-Crie exatamente ${postsToGenerate} posts.
-
-REGRAS CRÍTICAS:
-- SOMENTE JSON na resposta, sem nenhum texto antes ou depois
-- Copies com MÍNIMO 150 palavras cada - prontas para publicar
-- VARIE os formatos ao longo do calendário
-- Hashtags: mix de alta competição (alcance) e baixa competição (nicho)
-- Cada post deve ter um propósito estratégico claro
-- O conjunto de posts deve contar uma história progressiva
-- Briefing visual detalhado o suficiente para UM DESIGNER EXECUTAR SEM PERGUNTAS`
-
-    // Add the main prompt
-    contentBlocks.push({ type: 'text', text: mainPrompt })
-
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: contentBlocks }],
-    })
-
-    const textContent = message.content.find(block => block.type === 'text')
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('Resposta vazia da IA')
+    const promptParams = {
+      channelName, duration, frequencyLabel, niche,
+      product: product || '(ver arquivos anexados)',
+      contextExtra, suggestion: suggestion || '',
+      website: website || '', socialProfile: socialProfile || '',
+      targetAudience: targetAudience || '',
     }
 
-    let responseText = textContent.text.trim()
+    // Generate in batches
+    const allPosts: PostResult[] = []
+    const batches: { start: number; count: number }[] = []
 
-    // Clean up if wrapped in markdown code block
-    if (responseText.startsWith('```')) {
-      responseText = responseText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    for (let i = 0; i < postsToGenerate; i += BATCH_SIZE) {
+      batches.push({
+        start: i + 1,
+        count: Math.min(BATCH_SIZE, postsToGenerate - i),
+      })
     }
 
-    const parsed = JSON.parse(responseText)
+    for (const batch of batches) {
+      const promptText = buildPrompt({
+        ...promptParams,
+        batchStart: batch.start,
+        batchCount: batch.count,
+        totalPosts: postsToGenerate,
+      })
 
-    if (!parsed.posts || !Array.isArray(parsed.posts)) {
-      throw new Error('Formato de resposta inválido')
+      // Only include file blocks in the first batch
+      const contentBlocks: Anthropic.Messages.ContentBlockParam[] = []
+      if (batch.start === 1 && fileBlocks.length > 0) {
+        contentBlocks.push(...fileBlocks)
+      }
+      contentBlocks.push({ type: 'text', text: promptText })
+
+      const message = await client.messages.create({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 16000,
+        messages: [{ role: 'user', content: contentBlocks }],
+      })
+
+      const textContent = message.content.find(block => block.type === 'text')
+      if (!textContent || textContent.type !== 'text') {
+        throw new Error('Resposta vazia da IA')
+      }
+
+      let responseText = textContent.text.trim()
+      if (responseText.startsWith('```')) {
+        responseText = responseText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      }
+
+      const parsed = JSON.parse(responseText)
+      if (parsed.posts && Array.isArray(parsed.posts)) {
+        allPosts.push(...parsed.posts)
+      }
     }
 
-    return NextResponse.json({ posts: parsed.posts })
+    if (allPosts.length === 0) {
+      throw new Error('Nenhum post foi gerado')
+    }
+
+    return NextResponse.json({ posts: allPosts })
   } catch (err: unknown) {
     console.error('Generation error:', err)
     let message = 'Erro interno'
@@ -267,6 +297,8 @@ REGRAS CRÍTICAS:
       } else {
         message = err.message || 'Erro na API de IA'
       }
+    } else if (err instanceof SyntaxError) {
+      message = 'Erro ao processar resposta da IA. Tente novamente.'
     } else if (err instanceof Error) {
       message = err.message
     }
