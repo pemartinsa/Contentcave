@@ -50,9 +50,10 @@ export async function POST(req: Request) {
       email: user.email,
       name: user.name,
     })
-  } catch {
+  } catch (err) {
+    console.error('Register error:', err)
     return NextResponse.json(
-      { error: 'Erro interno do servidor' },
+      { error: 'Erro interno do servidor. Tente novamente.' },
       { status: 500 }
     )
   }

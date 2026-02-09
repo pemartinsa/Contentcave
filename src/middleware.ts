@@ -13,7 +13,8 @@ export async function middleware(request: NextRequest) {
   // Allow auth pages and API routes
   if (
     pathname.startsWith('/auth') ||
-    pathname.startsWith('/api/auth')
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/stripe')
   ) {
     // Redirect to dashboard if already logged in
     if (token && pathname.startsWith('/auth')) {

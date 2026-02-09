@@ -10,7 +10,9 @@ interface VoiceButtonProps {
 export default function VoiceButton({ onTranscript }: VoiceButtonProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [isSupported, setIsSupported] = useState(true)
-  const recognitionRef = useRef<ReturnType<typeof createRecognition> | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const transcriptRef = useRef('')
+  const manualStopRef = useRef(false)
 
   const startRecording = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -23,47 +25,86 @@ export default function VoiceButton({ onTranscript }: VoiceButtonProps) {
       return
     }
 
+    transcriptRef.current = ''
+    manualStopRef.current = false
+
     const recognition = new (SpeechRecognition as new () => SpeechRecognitionInstance)()
     recognition.lang = 'pt-BR'
     recognition.continuous = true
-    recognition.interimResults = false
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let transcript = ''
+      let finalTranscript = ''
       for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript + ' '
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' '
+        }
       }
-      if (transcript.trim()) {
-        onTranscript(transcript.trim())
+      if (finalTranscript.trim()) {
+        transcriptRef.current += finalTranscript
       }
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // 'no-speech' is common - just restart
+      if (event.error === 'no-speech') {
+        return
+      }
+      // 'aborted' happens on manual stop
+      if (event.error === 'aborted') {
+        return
+      }
+      console.error('Speech recognition error:', event.error)
       setIsRecording(false)
     }
 
     recognition.onend = () => {
+      // If user didn't manually stop, auto-restart to keep listening
+      if (!manualStopRef.current && isRecording) {
+        try {
+          recognition.start()
+          return
+        } catch {
+          // Failed to restart, that's ok
+        }
+      }
+
+      // Send final transcript
+      if (transcriptRef.current.trim()) {
+        onTranscript(transcriptRef.current.trim())
+      }
       setIsRecording(false)
     }
 
     recognitionRef.current = recognition
-    recognition.start()
-    setIsRecording(true)
-  }, [onTranscript])
+    try {
+      recognition.start()
+      setIsRecording(true)
+    } catch {
+      setIsSupported(false)
+    }
+  }, [onTranscript, isRecording])
 
   const stopRecording = useCallback(() => {
+    manualStopRef.current = true
     if (recognitionRef.current) {
       recognitionRef.current.stop()
       recognitionRef.current = null
     }
+
+    // Send whatever we have
+    if (transcriptRef.current.trim()) {
+      onTranscript(transcriptRef.current.trim())
+    }
     setIsRecording(false)
-  }, [])
+  }, [onTranscript])
 
   if (!isSupported) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
         <MicOff className="h-4 w-4" />
-        Seu navegador não suporta reconhecimento de voz
+        Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.
       </div>
     )
   }
@@ -100,7 +141,7 @@ export default function VoiceButton({ onTranscript }: VoiceButtonProps) {
               </div>
               <div>
                 <p className="text-sm font-semibold text-cyan-300">Ouvindo...</p>
-                <p className="text-xs text-cyan-500">Fale sobre seu negócio e conteúdo desejado</p>
+                <p className="text-xs text-cyan-500">Fale e clique no X quando terminar</p>
               </div>
             </div>
 
@@ -134,20 +175,28 @@ export default function VoiceButton({ onTranscript }: VoiceButtonProps) {
 
 // Type stubs for SpeechRecognition API
 interface SpeechRecognitionEvent {
-  results: { [index: number]: { [index: number]: { transcript: string } }; length: number }
+  results: {
+    [index: number]: {
+      [index: number]: { transcript: string }
+      isFinal: boolean
+      length: number
+    }
+    length: number
+  }
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string
 }
 
 interface SpeechRecognitionInstance {
   lang: string
   continuous: boolean
   interimResults: boolean
+  maxAlternatives: number
   onresult: ((event: SpeechRecognitionEvent) => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
   onend: (() => void) | null
   start(): void
   stop(): void
-}
-
-function createRecognition(): SpeechRecognitionInstance {
-  throw new Error('Not implemented')
 }
